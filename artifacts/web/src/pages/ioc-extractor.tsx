@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Search,
   Copy,
   CheckCheck,
   Trash2,
   Upload,
-  Download,
   FileJson,
   FileSpreadsheet,
   Globe,
@@ -15,6 +15,9 @@ import {
   ShieldAlert,
   Network,
   Radar,
+  ExternalLink,
+  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,40 +25,27 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { toast } from "sonner";
+import {
+  IOC_TYPES,
+  IOC_META,
+  extractIocs,
+  countTotal,
+  toCsv,
+  downloadFile,
+  ACCEPTED_FILE_EXTENSIONS,
+  SAMPLE_LOG_DATA,
+  type IocType,
+  type IocResults,
+} from "@/lib/ioc-extraction";
 
-// ---------------------------------------------------------------------------
-// Regex patterns -- everything runs 100% client-side, no network calls.
-// ---------------------------------------------------------------------------
-const IOC_PATTERNS = {
-  ipv4: /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g,
-  ipv6: /\b(?:[A-F0-9]{1,4}:){2,7}(?::[A-F0-9]{1,4}){1,6}\b|\b(?:[A-F0-9]{1,4}:){7}[A-F0-9]{1,4}\b/gi,
-  url: /\b(?:https?|ftp):\/\/[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,10}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)/gi,
-  domain: /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|edu|gov|mil|io|co|biz|info|ru|cn|uk|de|fr|jp|xyz|top|club|online|site|app|dev|ai|me|tv|cc|us|ca|au|info|link|click|shop|live)\b/gi,
-  email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi,
-  md5: /\b[a-fA-F0-9]{32}\b/g,
-  sha1: /\b[a-fA-F0-9]{40}\b/g,
-  sha256: /\b[a-fA-F0-9]{64}\b/g,
-  sha512: /\b[a-fA-F0-9]{128}\b/g,
-  cve: /\bCVE-\d{4}-\d{4,7}\b/gi,
-} as const;
-
-type IocType = keyof typeof IOC_PATTERNS;
-
-const IOC_LABELS: Record<IocType, string> = {
-  ipv4: "IPv4 Addresses",
-  ipv6: "IPv6 Addresses",
-  url: "URLs",
-  domain: "Domains",
-  email: "Email Addresses",
-  md5: "MD5 Hashes",
-  sha1: "SHA1 Hashes",
-  sha256: "SHA256 Hashes",
-  sha512: "SHA512 Hashes",
-  cve: "CVE IDs",
-};
-
-const IOC_ICONS: Record<IocType, typeof Globe> = {
+const ICONS: Record<IocType, typeof Globe> = {
   ipv4: Network,
   ipv6: Network,
   url: Link2,
@@ -68,96 +58,11 @@ const IOC_ICONS: Record<IocType, typeof Globe> = {
   cve: ShieldAlert,
 };
 
-const IOC_ORDER: IocType[] = [
-  "ipv4",
-  "ipv6",
-  "url",
-  "domain",
-  "email",
-  "md5",
-  "sha1",
-  "sha256",
-  "sha512",
-  "cve",
-];
-
-const ACCEPTED_EXTENSIONS = [".txt", ".log", ".csv", ".json"];
-
-function extractIocs(text: string): Record<IocType, string[]> {
-  const results = {} as Record<IocType, string[]>;
-  if (!text.trim()) {
-    IOC_ORDER.forEach((type) => (results[type] = []));
-    return results;
-  }
-
-  // Extract in a fixed priority order so higher-specificity types (urls,
-  // emails, hashes, CVEs) claim their substrings before the looser "domain"
-  // pattern has a chance to re-match the same text (e.g. a URL's hostname).
-  const consumed = new Set<string>();
-
-  const priority: IocType[] = [
-    "url",
-    "email",
-    "cve",
-    "sha512",
-    "sha256",
-    "sha1",
-    "md5",
-    "ipv6",
-    "ipv4",
-    "domain",
-  ];
-
-  for (const type of priority) {
-    const regex = IOC_PATTERNS[type];
-    const matches = text.match(regex) ?? [];
-    const unique = Array.from(new Set(matches.map((m) => m.trim())));
-
-    if (type === "domain") {
-      // Drop domains that are just the hostname portion of an already-found
-      // URL or email, so the same value doesn't appear twice in two cards.
-      results[type] = unique.filter((d) => !consumed.has(d.toLowerCase()));
-    } else {
-      results[type] = unique;
-      if (type === "url") {
-        unique.forEach((u) => {
-          try {
-            const host = new URL(u).hostname.toLowerCase();
-            consumed.add(host);
-          } catch {
-            // ignore malformed URL
-          }
-        });
-      }
-      if (type === "email") {
-        unique.forEach((e) => {
-          const host = e.split("@")[1]?.toLowerCase();
-          if (host) consumed.add(host);
-        });
-      }
-    }
-  }
-
-  return results;
-}
-
-function downloadFile(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function toCsv(rows: { type: string; value: string }[]): string {
-  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  const header = "type,value";
-  const body = rows.map((r) => `${escape(r.type)},${escape(r.value)}`).join("\n");
-  return `${header}\n${body}`;
+interface SummaryCardDef {
+  key: string;
+  label: string;
+  count: number;
+  icon: typeof Globe;
 }
 
 export default function IocExtractorPage() {
@@ -166,41 +71,66 @@ export default function IocExtractorPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showSuccessPulse, setShowSuccessPulse] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const extracted = useMemo(() => extractIocs(input), [input]);
+  const extracted: IocResults = useMemo(() => extractIocs(input), [input]);
+  const totalIocs = countTotal(extracted);
 
-  const totalIocs = IOC_ORDER.reduce((acc, type) => acc + extracted[type].length, 0);
+  const hashCount =
+    extracted.md5.length + extracted.sha1.length + extracted.sha256.length + extracted.sha512.length;
 
-  const countsByType = IOC_ORDER.map((type) => ({
-    type,
-    label: IOC_LABELS[type],
-    count: extracted[type].length,
-  })).filter((c) => c.count > 0);
+  const summaryCards: SummaryCardDef[] = [
+    { key: "total", label: "Total IOCs", count: totalIocs, icon: Sparkles },
+    { key: "ipv4", label: "IPv4", count: extracted.ipv4.length, icon: Network },
+    { key: "ipv6", label: "IPv6", count: extracted.ipv6.length, icon: Network },
+    { key: "url", label: "URLs", count: extracted.url.length, icon: Link2 },
+    { key: "domain", label: "Domains", count: extracted.domain.length, icon: Globe },
+    { key: "email", label: "Emails", count: extracted.email.length, icon: Mail },
+    { key: "hash", label: "Hashes", count: hashCount, icon: Fingerprint },
+    { key: "cve", label: "CVEs", count: extracted.cve.length, icon: ShieldAlert },
+  ];
 
   const normalizedSearch = search.trim().toLowerCase();
 
-  const visibleGroups = IOC_ORDER.map((type) => {
+  const visibleGroups = IOC_TYPES.map((type) => {
     const items = extracted[type];
     const filtered = normalizedSearch
       ? items.filter(
           (value) =>
             value.toLowerCase().includes(normalizedSearch) ||
-            IOC_LABELS[type].toLowerCase().includes(normalizedSearch),
+            IOC_META[type].label.toLowerCase().includes(normalizedSearch),
         )
       : items;
     return { type, items: filtered, totalCount: items.length };
   }).filter((g) => g.items.length > 0);
 
-  function processFileContent(name: string, content: string) {
-    setInput((prev) => (prev ? `${prev}\n\n${content}` : content));
-    toast.success(`Loaded ${name}`);
+  function triggerSuccessPulse() {
+    setShowSuccessPulse(true);
+    if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setShowSuccessPulse(false), 1400);
+  }
+
+  function runExtraction(next: string) {
+    setIsProcessing(true);
+    // Yield a frame so the loading state actually paints before the
+    // (synchronous, near-instant) regex pass runs on large paste/file input.
+    requestAnimationFrame(() => {
+      setInput(next);
+      setIsProcessing(false);
+      const found = countTotal(extractIocs(next));
+      if (found > 0) {
+        triggerSuccessPulse();
+        toast.success(`Extracted ${found} indicator${found === 1 ? "" : "s"}`);
+      }
+    });
   }
 
   function readFiles(files: FileList | File[]) {
     const list = Array.from(files);
     const valid = list.filter((f) =>
-      ACCEPTED_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext)),
+      ACCEPTED_FILE_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext)),
     );
 
     if (valid.length === 0) {
@@ -209,14 +139,22 @@ export default function IocExtractorPage() {
     }
 
     setIsProcessing(true);
+    const contents: string[] = [];
     let remaining = valid.length;
 
     valid.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
-        processFileContent(file.name, String(reader.result ?? ""));
+        contents.push(String(reader.result ?? ""));
         remaining -= 1;
-        if (remaining === 0) setIsProcessing(false);
+        if (remaining === 0) {
+          const combined = [input, ...contents].filter(Boolean).join("\n\n");
+          setInput(combined);
+          setIsProcessing(false);
+          toast.success(`Loaded ${valid.length} file${valid.length === 1 ? "" : "s"}`);
+          const found = countTotal(extractIocs(combined));
+          if (found > 0) triggerSuccessPulse();
+        }
       };
       reader.onerror = () => {
         toast.error(`Failed to read ${file.name}`);
@@ -230,9 +168,7 @@ export default function IocExtractorPage() {
   function handleDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files?.length) {
-      readFiles(e.dataTransfer.files);
-    }
+    if (e.dataTransfer.files?.length) readFiles(e.dataTransfer.files);
   }
 
   function handleDragOver(e: DragEvent<HTMLDivElement>) {
@@ -243,6 +179,10 @@ export default function IocExtractorPage() {
   function handleDragLeave(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragging(false);
+  }
+
+  function handleLoadSample() {
+    runExtraction(SAMPLE_LOG_DATA);
   }
 
   function handleCopy(text: string, id: string) {
@@ -256,7 +196,7 @@ export default function IocExtractorPage() {
     const items = extracted[type];
     if (items.length === 0) return;
     navigator.clipboard.writeText(items.join("\n"));
-    toast.success(`Copied all ${IOC_LABELS[type]}`);
+    toast.success(`Copied all ${IOC_META[type].label}`);
   }
 
   function handleExportGroupJson(type: IocType) {
@@ -267,23 +207,19 @@ export default function IocExtractorPage() {
       JSON.stringify({ type, count: items.length, values: items }, null, 2),
       "application/json",
     );
-    toast.success(`Exported ${IOC_LABELS[type]} as JSON`);
+    toast.success(`Exported ${IOC_META[type].label} as JSON`);
   }
 
   function handleExportGroupCsv(type: IocType) {
     const items = extracted[type];
     if (items.length === 0) return;
-    downloadFile(
-      `iocs-${type}.csv`,
-      toCsv(items.map((value) => ({ type, value }))),
-      "text/csv",
-    );
-    toast.success(`Exported ${IOC_LABELS[type]} as CSV`);
+    downloadFile(`iocs-${type}.csv`, toCsv(items.map((value) => ({ type, value }))), "text/csv");
+    toast.success(`Exported ${IOC_META[type].label} as CSV`);
   }
 
   function handleExportAllJson() {
     if (totalIocs === 0) return;
-    const payload = IOC_ORDER.reduce(
+    const payload = IOC_TYPES.reduce(
       (acc, type) => {
         if (extracted[type].length > 0) acc[type] = extracted[type];
         return acc;
@@ -300,9 +236,7 @@ export default function IocExtractorPage() {
 
   function handleExportAllCsv() {
     if (totalIocs === 0) return;
-    const rows = IOC_ORDER.flatMap((type) =>
-      extracted[type].map((value) => ({ type, value })),
-    );
+    const rows = IOC_TYPES.flatMap((type) => extracted[type].map((value) => ({ type, value })));
     downloadFile("socpilot-iocs.csv", toCsv(rows), "text/csv");
     toast.success("Exported all indicators as CSV");
   }
@@ -322,37 +256,50 @@ export default function IocExtractorPage() {
           </h1>
           <p className="text-muted-foreground font-mono text-sm">
             Paste raw logs, emails, or threat intel reports -- or drop a file below. Every indicator is
-            extracted locally in your browser. Nothing leaves your machine.
+            extracted and validated locally in your browser. Nothing leaves your machine.
           </p>
         </div>
-        <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-widest border-primary/40 text-primary shrink-0">
+        <Badge
+          variant="outline"
+          className="font-mono text-[10px] uppercase tracking-widest border-primary/40 text-primary shrink-0"
+        >
           100% Client-Side
         </Badge>
       </div>
 
-      {/* Input area */}
+      {/* Drag & drop input area */}
       <Card
-        className={`border-border rounded-none transition-colors ${
-          isDragging ? "border-primary bg-primary/5" : ""
+        className={`relative border-2 border-dashed rounded-none transition-colors ${
+          isDragging ? "border-primary bg-primary/5" : "border-border"
         }`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
       >
         <CardHeader className="py-4 border-b border-border bg-secondary/30 flex flex-row flex-wrap items-center justify-between gap-2">
-          <CardTitle className="font-mono text-sm uppercase">Raw Input Data</CardTitle>
+          <CardTitle className="font-mono text-sm uppercase flex items-center gap-2">
+            <Upload size={14} className="text-primary" /> Raw Input Data
+          </CardTitle>
           <div className="flex items-center gap-2">
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              accept={ACCEPTED_EXTENSIONS.join(",")}
+              accept={ACCEPTED_FILE_EXTENSIONS.join(",")}
               className="hidden"
               onChange={(e) => {
                 if (e.target.files?.length) readFiles(e.target.files);
                 e.target.value = "";
               }}
             />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs font-mono"
+              onClick={handleLoadSample}
+            >
+              <Sparkles size={14} className="mr-2" /> LOAD SAMPLE
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -375,76 +322,93 @@ export default function IocExtractorPage() {
         <CardContent className="p-0 relative">
           <Textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Paste raw text here, or drag & drop a .txt, .log, .csv or .json file..."
-            className="min-h-[220px] resize-y border-0 rounded-none focus-visible:ring-0 p-4 font-mono text-sm bg-transparent"
+            onChange={(e) => runExtraction(e.target.value)}
+            placeholder={
+              "Paste raw text here, or drag & drop a .txt, .log, .csv or .json file...\n\nTip: click LOAD SAMPLE to see it in action."
+            }
+            className="min-h-[240px] max-h-[520px] resize-y border-0 rounded-none focus-visible:ring-0 p-4 font-mono text-sm bg-transparent field-sizing-content"
           />
-          {isDragging && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/90 border-2 border-dashed border-primary pointer-events-none">
-              <p className="font-mono text-primary uppercase tracking-widest text-sm flex items-center gap-2">
-                <Upload size={16} /> Drop file to import
-              </p>
-            </div>
-          )}
-          {isProcessing && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-              <p className="font-mono text-muted-foreground text-sm flex items-center gap-2">
-                <Spinner className="size-4" /> Reading file...
-              </p>
-            </div>
-          )}
+
+          <AnimatePresence>
+            {isDragging && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 flex items-center justify-center bg-background/90 border-2 border-dashed border-primary pointer-events-none"
+              >
+                <p className="font-mono text-primary uppercase tracking-widest text-sm flex items-center gap-2">
+                  <Upload size={16} /> Drop file to import
+                </p>
+              </motion.div>
+            )}
+            {isProcessing && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 flex items-center justify-center bg-background/80"
+              >
+                <p className="font-mono text-muted-foreground text-sm flex items-center gap-2">
+                  <Spinner className="size-4" /> Analyzing input...
+                </p>
+              </motion.div>
+            )}
+            {showSuccessPulse && !isProcessing && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="absolute top-3 right-3 flex items-center gap-1.5 bg-primary/10 border border-primary/40 px-3 py-1.5 text-primary font-mono text-xs uppercase tracking-wide pointer-events-none"
+              >
+                <ShieldCheck size={14} /> Extraction complete
+              </motion.div>
+            )}
+          </AnimatePresence>
         </CardContent>
       </Card>
 
-      {/* Summary */}
-      <Card className="border-border rounded-none">
-        <CardHeader className="py-4 border-b border-border bg-secondary/30 flex flex-row flex-wrap items-center justify-between gap-2">
-          <CardTitle className="font-mono text-sm uppercase flex items-center gap-2">
-            Summary
-            <Badge variant="secondary" className="font-mono">{totalIocs} total</Badge>
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs font-mono"
-              disabled={totalIocs === 0}
-              onClick={handleExportAllJson}
-            >
-              <FileJson size={14} className="mr-2" /> EXPORT ALL JSON
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs font-mono"
-              disabled={totalIocs === 0}
-              onClick={handleExportAllCsv}
-            >
-              <FileSpreadsheet size={14} className="mr-2" /> EXPORT ALL CSV
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4">
-          {totalIocs === 0 ? (
-            <p className="font-mono text-sm text-muted-foreground">
-              {input ? "No indicators found in input text." : "Waiting for input data..."}
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {countsByType.map(({ type, label, count }) => (
-                <Badge
-                  key={type}
-                  variant="outline"
-                  className="font-mono text-xs border-border gap-2 px-3 py-1"
+      {/* Summary dashboard */}
+      <div>
+        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-3">
+          Summary
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+          {summaryCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <motion.div
+                key={card.key}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card
+                  className={`rounded-none border-border h-full ${
+                    card.key === "total" ? "border-primary/50 bg-primary/5" : ""
+                  }`}
                 >
-                  <span className="text-muted-foreground uppercase tracking-wide">{label}</span>
-                  <span className="text-primary font-bold">{count}</span>
-                </Badge>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  <CardContent className="p-3 flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <Icon size={14} className={card.key === "total" ? "text-primary" : "text-muted-foreground"} />
+                    </div>
+                    <span
+                      className={`font-mono text-2xl font-bold tabular-nums ${
+                        card.key === "total" ? "text-primary" : "text-foreground"
+                      }`}
+                    >
+                      {card.count}
+                    </span>
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                      {card.label}
+                    </span>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Search / filter */}
       {totalIocs > 0 && (
@@ -459,90 +423,164 @@ export default function IocExtractorPage() {
         </div>
       )}
 
-      {/* Results grid */}
-      {totalIocs === 0 ? (
-        <Card className="border-border rounded-none border-dashed">
-          <CardContent className="py-16 text-center text-muted-foreground font-mono text-sm">
-            {input ? "No indicators matched the known patterns." : "Extracted indicators will appear here as cards, grouped by type."}
-          </CardContent>
-        </Card>
-      ) : visibleGroups.length === 0 ? (
-        <Card className="border-border rounded-none border-dashed">
-          <CardContent className="py-16 text-center text-muted-foreground font-mono text-sm">
-            No indicators match "{search}".
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {visibleGroups.map(({ type, items, totalCount }) => {
-            const Icon = IOC_ICONS[type];
-            return (
-              <Card key={type} className="border-border rounded-none flex flex-col">
-                <CardHeader className="py-3 border-b border-border bg-secondary/30 flex flex-row items-center justify-between gap-2">
-                  <CardTitle className="font-mono text-xs uppercase tracking-widest text-primary flex items-center gap-2">
-                    <Icon size={14} />
-                    {IOC_LABELS[type]}
-                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 rounded-sm border-primary/30">
-                      {totalCount}
-                    </Badge>
-                  </CardTitle>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      title="Copy all"
-                      onClick={() => handleCopyGroup(type)}
-                    >
-                      <Copy size={12} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      title="Export JSON"
-                      onClick={() => handleExportGroupJson(type)}
-                    >
-                      <FileJson size={12} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      title="Export CSV"
-                      onClick={() => handleExportGroupCsv(type)}
-                    >
-                      <FileSpreadsheet size={12} />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-2 flex-1 overflow-auto max-h-72 space-y-1">
-                  {items.map((item, idx) => {
-                    const id = `${type}-${idx}-${item}`;
-                    const isCopied = copiedId === id;
-                    return (
-                      <div
-                        key={id}
-                        className="group flex items-center justify-between gap-2 bg-card border border-border/50 px-2.5 py-1.5 hover:border-primary/50 transition-colors"
-                      >
-                        <span className="font-mono text-xs text-foreground break-all">{item}</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleCopy(item, id)}
-                        >
-                          {isCopied ? <CheckCheck size={12} className="text-primary" /> : <Copy size={12} />}
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            );
-          })}
+      {/* Results */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            Extracted Indicators
+          </h2>
+          {totalIocs > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-mono"
+                onClick={handleExportAllJson}
+              >
+                <FileJson size={14} className="mr-2" /> EXPORT ALL JSON
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-mono"
+                onClick={handleExportAllCsv}
+              >
+                <FileSpreadsheet size={14} className="mr-2" /> EXPORT ALL CSV
+              </Button>
+            </div>
+          )}
         </div>
-      )}
+
+        {totalIocs === 0 ? (
+          <Card className="border-border rounded-none border-dashed">
+            <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
+              <Radar className="text-muted-foreground" size={32} />
+              <p className="font-mono text-sm text-foreground">
+                {input ? "No indicators matched the known patterns." : "No indicators yet"}
+              </p>
+              <p className="font-mono text-xs text-muted-foreground max-w-md">
+                {input
+                  ? "Try pasting logs that include IPs, domains, URLs, emails, hashes, or CVE IDs."
+                  : "Paste text above, drop a log file, or click LOAD SAMPLE to see IPv4/IPv6 addresses, URLs, domains, emails, hashes, and CVE IDs extracted and categorized automatically."}
+              </p>
+            </CardContent>
+          </Card>
+        ) : visibleGroups.length === 0 ? (
+          <Card className="border-border rounded-none border-dashed">
+            <CardContent className="py-16 text-center text-muted-foreground font-mono text-sm">
+              No indicators match "{search}".
+            </CardContent>
+          </Card>
+        ) : (
+          <Accordion type="multiple" defaultValue={visibleGroups.map((g) => g.type)} className="space-y-3">
+            {visibleGroups.map(({ type, items, totalCount }) => {
+              const Icon = ICONS[type];
+              const meta = IOC_META[type];
+              return (
+                <AccordionItem
+                  key={type}
+                  value={type}
+                  className="border border-border bg-card [&>h3]:border-0"
+                >
+                  <div className="flex items-center justify-between pr-3">
+                    <AccordionTrigger className="px-4 py-3 hover:no-underline flex-1">
+                      <span className="font-mono text-xs uppercase tracking-widest text-primary flex items-center gap-2">
+                        <Icon size={14} />
+                        {meta.label}
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-4 px-1.5 rounded-sm border-primary/30"
+                        >
+                          {totalCount}
+                        </Badge>
+                      </span>
+                    </AccordionTrigger>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Copy all"
+                        aria-label={`Copy all ${meta.label}`}
+                        onClick={() => handleCopyGroup(type)}
+                      >
+                        <Copy size={13} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Export JSON"
+                        aria-label={`Export ${meta.label} as JSON`}
+                        onClick={() => handleExportGroupJson(type)}
+                      >
+                        <FileJson size={13} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Export CSV"
+                        aria-label={`Export ${meta.label} as CSV`}
+                        onClick={() => handleExportGroupCsv(type)}
+                      >
+                        <FileSpreadsheet size={13} />
+                      </Button>
+                    </div>
+                  </div>
+                  <AccordionContent className="px-4">
+                    <div className="space-y-1 max-h-72 overflow-auto">
+                      {items.map((item, idx) => {
+                        const id = `${type}-${idx}-${item}`;
+                        const isCopied = copiedId === id;
+                        const link = meta.linkable ? meta.buildLink?.(item) : undefined;
+                        return (
+                          <div
+                            key={id}
+                            className="group flex items-center justify-between gap-2 bg-background border border-border/50 px-2.5 py-1.5 hover:border-primary/50 transition-colors"
+                          >
+                            <span className="font-mono text-xs text-foreground break-all">{item}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {link && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                  title="Open externally"
+                                  aria-label={`Open ${item} externally`}
+                                  asChild
+                                >
+                                  <a href={link} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink size={12} />
+                                  </a>
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                title="Copy"
+                                aria-label={`Copy ${item}`}
+                                onClick={() => handleCopy(item, id)}
+                              >
+                                {isCopied ? (
+                                  <CheckCheck size={12} className="text-primary" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
+          </Accordion>
+        )}
+      </div>
     </div>
   );
 }
