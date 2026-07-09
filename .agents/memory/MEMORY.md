@@ -1,0 +1,2 @@
+- [Orval generated hook/type names](orval-generated-names.md) — enum/type names derive from the response schema name, not the operation; never guess, grep the generated file first.
+- [ApiError shape from customFetch](api-error-shape.md) — status/data are top-level on ApiError, not nested under `.response`.

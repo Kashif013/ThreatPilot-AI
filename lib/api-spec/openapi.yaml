@@ -10,6 +10,10 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: analysis
+    description: AI-powered log analysis and incident report generation
+  - name: history
+    description: Saved analysis/report history for the authenticated user
 paths:
   /healthz:
     get:
@@ -24,6 +28,150 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /analysis/logs:
+    post:
+      operationId: analyzeLogs
+      tags: [analysis]
+      summary: Analyze raw security logs with AI
+      description: >-
+        Submits raw log text to the AI analyzer and returns a structured
+        security assessment (severity, summary, indicators, MITRE ATT&CK
+        mapping, investigation steps, containment recommendations). Persists
+        the result to the caller's analysis history.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogAnalysisInput"
+      responses:
+        "200":
+          description: Analysis complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogAnalysisResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /analysis/incident-report:
+    post:
+      operationId: generateIncidentReport
+      tags: [analysis]
+      summary: Generate a structured incident report with AI
+      description: >-
+        Submits incident details (and optionally prior log analysis context)
+        and returns a full structured incident report. Persists the result to
+        the caller's analysis history.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentReportInput"
+      responses:
+        "200":
+          description: Report generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentReport"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /history:
+    get:
+      operationId: listHistory
+      tags: [history]
+      summary: List the authenticated user's saved analyses
+      responses:
+        "200":
+          description: List of history entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoryEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /history/{id}:
+    get:
+      operationId: getHistoryEntry
+      tags: [history]
+      summary: Get a single history entry by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: History entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteHistoryEntry
+      tags: [history]
+      summary: Delete a history entry by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +181,170 @@ components:
           type: string
       required:
         - status
-
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    Ioc:
+      type: object
+      description: A single indicator of compromise extracted or referenced.
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum:
+            [ipv4, ipv6, domain, url, email, md5, sha1, sha256, cve]
+        value:
+          type: string
+    MitreMapping:
+      type: object
+      required: [tacticId, tacticName, techniqueId, techniqueName]
+      properties:
+        tacticId:
+          type: string
+        tacticName:
+          type: string
+        techniqueId:
+          type: string
+        techniqueName:
+          type: string
+    LogAnalysisInput:
+      type: object
+      required: [logText]
+      properties:
+        logText:
+          type: string
+          minLength: 1
+          description: Raw log text to analyze (syslog, firewall, EDR, auth logs, etc.)
+    LogAnalysisResult:
+      type: object
+      required:
+        - id
+        - severity
+        - summary
+        - indicators
+        - mitreMappings
+        - investigationSteps
+        - containmentRecommendations
+        - createdAt
+      properties:
+        id:
+          type: string
+        severity:
+          type: string
+          enum: [informational, low, medium, high, critical]
+        summary:
+          type: string
+        indicators:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ioc"
+        mitreMappings:
+          type: array
+          items:
+            $ref: "#/components/schemas/MitreMapping"
+        investigationSteps:
+          type: array
+          items:
+            type: string
+        containmentRecommendations:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+    IncidentReportInput:
+      type: object
+      required: [incidentTitle, details]
+      properties:
+        incidentTitle:
+          type: string
+          minLength: 1
+        details:
+          type: string
+          minLength: 1
+          description: >-
+            Free-form description of the incident, affected systems, timeline
+            notes, and any logs/IOCs already gathered.
+        priorAnalysisId:
+          type: ["string", "null"]
+          description: Optional id of a prior LogAnalysisResult saved in history to use as context.
+    IncidentReport:
+      type: object
+      required:
+        - id
+        - incidentTitle
+        - executiveSummary
+        - timeline
+        - indicators
+        - affectedAssets
+        - rootCause
+        - impact
+        - containment
+        - eradication
+        - recovery
+        - lessonsLearned
+        - createdAt
+      properties:
+        id:
+          type: string
+        incidentTitle:
+          type: string
+        executiveSummary:
+          type: string
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineEvent"
+        indicators:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ioc"
+        affectedAssets:
+          type: array
+          items:
+            type: string
+        rootCause:
+          type: string
+        impact:
+          type: string
+        containment:
+          type: string
+        eradication:
+          type: string
+        recovery:
+          type: string
+        lessonsLearned:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    TimelineEvent:
+      type: object
+      required: [timestamp, description]
+      properties:
+        timestamp:
+          type: string
+        description:
+          type: string
+    HistoryEntry:
+      type: object
+      required: [id, type, title, input, result, createdAt]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [log_analysis, incident_report]
+        title:
+          type: string
+        input:
+          type: string
+        result:
+          description: The full LogAnalysisResult or IncidentReport payload, depending on type.
+        createdAt:
+          type: string
+          format: date-time
