@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter"
 import { useClerk, useUser } from "@clerk/react"
 import { ShieldAlert, LogOut, TerminalSquare, FileText, Search, Activity, History } from "lucide-react"
 import { Button } from "./ui/button"
+import { Badge } from "./ui/badge"
 
 const navItems = [
   { name: "Dashboard", path: "/dashboard", icon: Activity },
@@ -26,7 +27,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <ShieldAlert size={24} />
           </div>
           <div className="font-sans">
-            <h1 className="font-bold text-lg tracking-tight leading-none text-foreground uppercase">ThreatPilot AI</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-bold text-lg tracking-tight leading-none text-foreground uppercase">ThreatPilot AI</h1>
+              <Badge variant="outline" className="border-yellow-500/40 text-yellow-500 font-mono text-[9px] px-1.5 py-0 leading-4 tracking-widest">
+                🟡 BETA
+              </Badge>
+            </div>
             <p className="text-xs text-muted-foreground uppercase tracking-widest">AI Console</p>
           </div>
         </div>

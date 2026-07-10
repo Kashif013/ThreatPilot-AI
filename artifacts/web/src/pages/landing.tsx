@@ -1,13 +1,17 @@
 import { Link } from "wouter"
 import { ShieldAlert, ChevronRight, Activity, TerminalSquare, Search } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
       <header className="border-b border-border py-4 px-6 md:px-12 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-primary">
+        <div className="flex items-center gap-3 text-primary">
           <ShieldAlert size={28} />
           <span className="font-bold text-xl tracking-tight text-foreground">ThreatPilot AI</span>
+          <Badge variant="outline" className="border-yellow-500/40 text-yellow-500 font-mono text-[10px] tracking-widest">
+            🟡 BETA
+          </Badge>
         </div>
         <div className="flex gap-4">
           <Link href="/sign-in" className="text-sm font-mono font-medium text-muted-foreground hover:text-foreground transition-colors py-2 px-4 border border-transparent">
@@ -26,15 +30,19 @@ export default function LandingPage() {
         </div>
         
         <h1 className="text-5xl md:text-7xl font-bold tracking-tighter max-w-4xl leading-[1.1] mb-6">
-          ThreatPilot AI
+          ThreatPilot AI <span className="text-muted-foreground">(Beta)</span>
         </h1>
 
         <p className="text-2xl md:text-3xl font-bold text-primary font-mono tracking-tight mb-6">
           Analyze. Detect. Respond.
         </p>
 
-        <p className="text-xl text-muted-foreground max-w-2xl mb-12 font-mono leading-relaxed">
+        <p className="text-xl text-muted-foreground max-w-2xl mb-4 font-mono leading-relaxed">
           ThreatPilot AI is an AI-powered cybersecurity assistant designed for SOC Analysts, Security Engineers, Incident Responders, and Cybersecurity Students. It helps analyze logs, extract IOCs, generate incident reports, and simplify security investigations.
+        </p>
+
+        <p className="text-sm text-yellow-500/90 max-w-2xl mb-12 font-mono leading-relaxed border border-yellow-500/30 bg-yellow-500/5 px-4 py-3">
+          ThreatPilot AI is currently in Beta. Core cybersecurity tools are available while advanced AI capabilities are being actively developed.
         </p>
         
         <div className="flex flex-col sm:flex-row gap-4 mb-24">
