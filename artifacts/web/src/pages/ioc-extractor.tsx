@@ -18,6 +18,8 @@ import {
   ExternalLink,
   Sparkles,
   ShieldCheck,
+  Zap,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,6 +67,11 @@ interface SummaryCardDef {
   icon: typeof Globe;
 }
 
+const EMPTY_RESULTS: IocResults = IOC_TYPES.reduce((acc, type) => {
+  acc[type] = [];
+  return acc;
+}, {} as IocResults);
+
 export default function IocExtractorPage() {
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
@@ -72,11 +79,13 @@ export default function IocExtractorPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccessPulse, setShowSuccessPulse] = useState(false);
+  const [extracted, setExtracted] = useState<IocResults>(EMPTY_RESULTS);
+  const [error, setError] = useState<string | null>(null);
+  const [hasExtracted, setHasExtracted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const extracted: IocResults = useMemo(() => extractIocs(input), [input]);
-  const totalIocs = countTotal(extracted);
+  const totalIocs = useMemo(() => countTotal(extracted), [extracted]);
 
   const hashCount =
     extracted.md5.length + extracted.sha1.length + extracted.sha256.length + extracted.sha512.length;
@@ -112,19 +121,50 @@ export default function IocExtractorPage() {
     successTimeoutRef.current = setTimeout(() => setShowSuccessPulse(false), 1400);
   }
 
+  /**
+   * The single entry point for running extraction against a given text
+   * blob. Used by the explicit "Extract IOCs" button, LOAD SAMPLE, and file
+   * uploads. Runs on the next animation frame so the loading spinner
+   * actually paints before the (synchronous, near-instant) regex pass runs
+   * on large paste/file input, and is wrapped in try/catch so a malformed
+   * pattern or unexpected input surfaces as a visible error instead of
+   * silently doing nothing.
+   */
   function runExtraction(next: string) {
+    setError(null);
     setIsProcessing(true);
-    // Yield a frame so the loading state actually paints before the
-    // (synchronous, near-instant) regex pass runs on large paste/file input.
+    setInput(next);
     requestAnimationFrame(() => {
-      setInput(next);
-      setIsProcessing(false);
-      const found = countTotal(extractIocs(next));
-      if (found > 0) {
-        triggerSuccessPulse();
-        toast.success(`Extracted ${found} indicator${found === 1 ? "" : "s"}`);
+      try {
+        if (!next.trim()) {
+          setExtracted(EMPTY_RESULTS);
+          setHasExtracted(true);
+          setIsProcessing(false);
+          toast.error("Nothing to extract -- paste some text first");
+          return;
+        }
+        const results = extractIocs(next);
+        const found = countTotal(results);
+        setExtracted(results);
+        setHasExtracted(true);
+        setIsProcessing(false);
+        if (found > 0) {
+          triggerSuccessPulse();
+          toast.success(`Extracted ${found} indicator${found === 1 ? "" : "s"}`);
+        } else {
+          toast("No known indicator patterns found in this input");
+        }
+      } catch (err) {
+        setIsProcessing(false);
+        const message = err instanceof Error ? err.message : "Unknown error while extracting IOCs";
+        setError(message);
+        toast.error(`Extraction failed: ${message}`);
       }
     });
+  }
+
+  function handleExtractClick() {
+    runExtraction(input);
   }
 
   function readFiles(files: FileList | File[]) {
@@ -138,6 +178,7 @@ export default function IocExtractorPage() {
       return;
     }
 
+    setError(null);
     setIsProcessing(true);
     const contents: string[] = [];
     let remaining = valid.length;
@@ -150,10 +191,8 @@ export default function IocExtractorPage() {
         if (remaining === 0) {
           const combined = [input, ...contents].filter(Boolean).join("\n\n");
           setInput(combined);
-          setIsProcessing(false);
           toast.success(`Loaded ${valid.length} file${valid.length === 1 ? "" : "s"}`);
-          const found = countTotal(extractIocs(combined));
-          if (found > 0) triggerSuccessPulse();
+          runExtraction(combined);
         }
       };
       reader.onerror = () => {
@@ -244,6 +283,9 @@ export default function IocExtractorPage() {
   function handleClear() {
     setInput("");
     setSearch("");
+    setExtracted(EMPTY_RESULTS);
+    setError(null);
+    setHasExtracted(false);
     toast.success("Cleared");
   }
 
@@ -322,9 +364,15 @@ export default function IocExtractorPage() {
         <CardContent className="p-0 relative">
           <Textarea
             value={input}
-            onChange={(e) => runExtraction(e.target.value)}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                handleExtractClick();
+              }
+            }}
             placeholder={
-              "Paste raw text here, or drag & drop a .txt, .log, .csv or .json file...\n\nTip: click LOAD SAMPLE to see it in action."
+              "Paste raw text here, or drag & drop a .txt, .log, .csv or .json file...\n\nTip: click LOAD SAMPLE to see it in action, or paste your own and click EXTRACT IOCS."
             }
             className="min-h-[240px] max-h-[520px] resize-y border-0 rounded-none focus-visible:ring-0 p-4 font-mono text-sm bg-transparent field-sizing-content"
           />
@@ -366,7 +414,41 @@ export default function IocExtractorPage() {
             )}
           </AnimatePresence>
         </CardContent>
+        <div className="border-t border-border p-3 bg-secondary/20 flex items-center justify-between gap-3 flex-wrap">
+          <p className="font-mono text-[11px] text-muted-foreground">
+            {input.trim() ? `${input.trim().length.toLocaleString()} characters ready` : "Awaiting input"}
+            <span className="hidden sm:inline"> -- or press Ctrl/Cmd + Enter</span>
+          </p>
+          <Button
+            onClick={handleExtractClick}
+            disabled={!input.trim() || isProcessing}
+            className="h-9 px-6 text-xs font-mono font-bold uppercase tracking-widest"
+          >
+            {isProcessing ? (
+              <>
+                <Spinner className="size-4 mr-2" /> Extracting...
+              </>
+            ) : (
+              <>
+                <Zap size={14} className="mr-2" /> Extract IOCs
+              </>
+            )}
+          </Button>
+        </div>
       </Card>
+
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 border border-destructive/40 bg-destructive/10 text-destructive px-4 py-3 font-mono text-sm"
+        >
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-bold uppercase tracking-wide text-xs mb-1">Extraction failed</p>
+            <p className="text-destructive/90">{error}</p>
+          </div>
+        </div>
+      )}
 
       {/* Summary dashboard */}
       <div>
@@ -456,10 +538,10 @@ export default function IocExtractorPage() {
             <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
               <Radar className="text-muted-foreground" size={32} />
               <p className="font-mono text-sm text-foreground">
-                {input ? "No indicators matched the known patterns." : "No indicators yet"}
+                {hasExtracted ? "No indicators matched the known patterns." : "No indicators yet"}
               </p>
               <p className="font-mono text-xs text-muted-foreground max-w-md">
-                {input
+                {hasExtracted
                   ? "Try pasting logs that include IPs, domains, URLs, emails, hashes, or CVE IDs."
                   : "Paste text above, drop a log file, or click LOAD SAMPLE to see IPv4/IPv6 addresses, URLs, domains, emails, hashes, and CVE IDs extracted and categorized automatically."}
               </p>

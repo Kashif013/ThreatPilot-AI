@@ -284,8 +284,8 @@ export const SAMPLE_LOG_DATA = `[2026-07-09 14:02:11] ALERT src=203.0.113.42 dst
 [2026-07-09 14:03:02] Outbound request to http://phish-portal.click/login?token=abc123 blocked by proxy
 [2026-07-09 14:03:47] Suspicious attachment invoice.exe hash MD5=44d88612fea8a8f36de82e1278abb02f
 [2026-07-09 14:04:10] File dropper.bin flagged SHA1=da39a3ee5e6b4b0d3255bfef95601890afd80709
-[2026-07-09 14:04:55] Payload stage2.dll flagged SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85
-[2026-07-09 14:05:20] Full memory dump hash SHA512=cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3
+[2026-07-09 14:04:55] Payload stage2.dll flagged SHA256=64f59f064f1d7540996152fb7e320772c11258a9c415badf8fd43c076d132f02
+[2026-07-09 14:05:20] Full memory dump hash SHA512=55ea7eee85758e5944d8884a002affed23a33ef91d9ff2c211b2822f171fbeeb12aef1938a1373c496cbac5134844959102932d22e84e19bd8aa34a39cb0ca95
 [2026-07-09 14:06:03] Phishing email received from attacker@phish-portal.click targeting finance@company.com
 [2026-07-09 14:06:44] IPv6 beacon detected from 2001:0db8:85a3:0000:0000:8a2e:0370:7334
 [2026-07-09 14:07:12] Exploit attempt matches CVE-2024-3400 against edge firewall
