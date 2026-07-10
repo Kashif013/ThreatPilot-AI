@@ -7,7 +7,7 @@ export default function LandingPage() {
       <header className="border-b border-border py-4 px-6 md:px-12 flex items-center justify-between">
         <div className="flex items-center gap-2 text-primary">
           <ShieldAlert size={28} />
-          <span className="font-bold text-xl tracking-tight text-foreground">SOCPilot AI</span>
+          <span className="font-bold text-xl tracking-tight text-foreground">ThreatPilot AI</span>
         </div>
         <div className="flex gap-4">
           <Link href="/sign-in" className="text-sm font-mono font-medium text-muted-foreground hover:text-foreground transition-colors py-2 px-4 border border-transparent">
@@ -26,11 +26,15 @@ export default function LandingPage() {
         </div>
         
         <h1 className="text-5xl md:text-7xl font-bold tracking-tighter max-w-4xl leading-[1.1] mb-6">
-          The <span className="text-primary">Command Center</span> for Active Investigations.
+          ThreatPilot AI
         </h1>
-        
+
+        <p className="text-2xl md:text-3xl font-bold text-primary font-mono tracking-tight mb-6">
+          Analyze. Detect. Respond.
+        </p>
+
         <p className="text-xl text-muted-foreground max-w-2xl mb-12 font-mono leading-relaxed">
-          Precise, fast, and technical. Analyze logs, extract IOCs, and generate incident reports with AI assistance tailored for SOC analysts.
+          ThreatPilot AI is an AI-powered cybersecurity assistant designed for SOC Analysts, Security Engineers, Incident Responders, and Cybersecurity Students. It helps analyze logs, extract IOCs, generate incident reports, and simplify security investigations.
         </p>
         
         <div className="flex flex-col sm:flex-row gap-4 mb-24">
@@ -58,8 +62,11 @@ export default function LandingPage() {
         </div>
       </main>
       
-      <footer className="border-t border-border py-8 px-6 text-center text-sm font-mono text-muted-foreground">
-        &copy; {new Date().getFullYear()} SOCPilot AI. Secure connection established.
+      <footer className="border-t border-border py-8 px-6 text-center text-sm font-mono text-muted-foreground space-y-1">
+        <p className="font-bold text-foreground uppercase tracking-wide">ThreatPilot AI</p>
+        <p>Version 0.9 Beta</p>
+        <p>&copy; 2026 ThreatPilot AI</p>
+        <p>All Rights Reserved</p>
       </footer>
     </div>
   )

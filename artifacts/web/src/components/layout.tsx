@@ -26,7 +26,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <ShieldAlert size={24} />
           </div>
           <div className="font-sans">
-            <h1 className="font-bold text-lg tracking-tight leading-none text-foreground uppercase">SOCPilot</h1>
+            <h1 className="font-bold text-lg tracking-tight leading-none text-foreground uppercase">ThreatPilot AI</h1>
             <p className="text-xs text-muted-foreground uppercase tracking-widest">AI Console</p>
           </div>
         </div>

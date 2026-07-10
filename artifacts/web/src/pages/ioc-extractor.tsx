@@ -227,7 +227,7 @@ export default function IocExtractorPage() {
       {} as Record<string, string[]>,
     );
     downloadFile(
-      "socpilot-iocs.json",
+      "threatpilot-iocs.json",
       JSON.stringify({ totalCount: totalIocs, results: payload }, null, 2),
       "application/json",
     );
@@ -237,7 +237,7 @@ export default function IocExtractorPage() {
   function handleExportAllCsv() {
     if (totalIocs === 0) return;
     const rows = IOC_TYPES.flatMap((type) => extracted[type].map((value) => ({ type, value })));
-    downloadFile("socpilot-iocs.csv", toCsv(rows), "text/csv");
+    downloadFile("threatpilot-iocs.csv", toCsv(rows), "text/csv");
     toast.success("Exported all indicators as CSV");
   }
 
