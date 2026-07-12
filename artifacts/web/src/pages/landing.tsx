@@ -13,7 +13,10 @@ export default function LandingPage() {
             🟡 BETA
           </Badge>
         </div>
-        <div className="flex gap-4">
+        <div className="flex items-center gap-4">
+          <Link href="/ioc-extractor" className="text-sm font-mono font-medium text-muted-foreground hover:text-foreground transition-colors py-2 px-4 border border-transparent">
+            IOC EXTRACTOR
+          </Link>
           <Link href="/sign-in" className="text-sm font-mono font-medium text-muted-foreground hover:text-foreground transition-colors py-2 px-4 border border-transparent">
             SIGN IN
           </Link>
@@ -45,17 +48,24 @@ export default function LandingPage() {
           ThreatPilot AI is currently in Beta. Core cybersecurity tools are available while advanced AI capabilities are being actively developed.
         </p>
         
-        <div className="flex flex-col sm:flex-row gap-4 mb-24">
+        <div className="flex flex-col sm:flex-row gap-4 mb-4">
           <Link href="/sign-up" className="inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground h-12 px-8 font-mono font-bold hover:bg-primary/90 transition-colors uppercase text-sm">
             INITIALIZE CONSOLE <ChevronRight size={16} />
           </Link>
+          <Link href="/ioc-extractor" className="inline-flex items-center justify-center gap-2 border border-border text-foreground h-12 px-8 font-mono font-bold hover:bg-accent transition-colors uppercase text-sm">
+            <Search size={16} /> TRY IOC EXTRACTOR
+          </Link>
         </div>
+        <p className="text-xs text-muted-foreground mb-24 font-mono uppercase tracking-widest">No sign-in required &mdash; runs 100% in your browser</p>
 
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl w-full text-left">
           <div className="border border-border p-6 bg-card flex flex-col gap-4">
             <Search className="text-primary" size={24} />
             <h3 className="font-bold text-lg font-mono uppercase tracking-wide">IOC Extraction</h3>
             <p className="text-muted-foreground text-sm leading-relaxed">Instantly parse vast amounts of text and pull out IPv4/IPv6, Domains, URLs, Hashes, and CVEs with 100% client-side precision.</p>
+            <Link href="/ioc-extractor" className="text-primary text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1 mt-auto">
+              Open tool <ChevronRight size={12} />
+            </Link>
           </div>
           <div className="border border-border p-6 bg-card flex flex-col gap-4">
             <TerminalSquare className="text-primary" size={24} />

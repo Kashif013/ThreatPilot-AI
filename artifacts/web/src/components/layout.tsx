@@ -1,22 +1,22 @@
 import { Link, useLocation } from "wouter"
 import { useClerk, useUser } from "@clerk/react"
-import { ShieldAlert, LogOut, TerminalSquare, FileText, Search, Activity, History } from "lucide-react"
+import { ShieldAlert, LogOut, LogIn, TerminalSquare, FileText, Search, Activity, History, Lock } from "lucide-react"
 import { Button } from "./ui/button"
 import { Badge } from "./ui/badge"
 
 const navItems = [
-  { name: "Dashboard", path: "/dashboard", icon: Activity },
-  { name: "IOC Extractor", path: "/ioc-extractor", icon: Search },
-  { name: "Log Analyzer", path: "/log-analyzer", icon: TerminalSquare },
-  { name: "Incident Report", path: "/incident-report", icon: FileText },
-  { name: "Decoder", path: "/decoder", icon: ShieldAlert },
-  { name: "History", path: "/history", icon: History },
+  { name: "Dashboard", path: "/dashboard", icon: Activity, authRequired: true },
+  { name: "IOC Extractor", path: "/ioc-extractor", icon: Search, authRequired: false },
+  { name: "Log Analyzer", path: "/log-analyzer", icon: TerminalSquare, authRequired: true },
+  { name: "Incident Report", path: "/incident-report", icon: FileText, authRequired: true },
+  { name: "Decoder", path: "/decoder", icon: ShieldAlert, authRequired: true },
+  { name: "History", path: "/history", icon: History, authRequired: true },
 ]
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation()
   const { signOut } = useClerk()
-  const { user } = useUser()
+  const { user, isSignedIn } = useUser()
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground font-mono">
@@ -40,6 +40,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = location === item.path
+            const locked = item.authRequired && !isSignedIn
             return (
               <Link key={item.path} href={item.path}>
                 <div
@@ -48,9 +49,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       ? "bg-primary/10 text-primary border-l-2 border-primary font-bold"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
                   }`}
+                  title={locked ? "Sign in required" : undefined}
                 >
                   <item.icon size={16} />
-                  <span>{item.name}</span>
+                  <span className="flex-1">{item.name}</span>
+                  {locked && <Lock size={12} className="text-muted-foreground/60" />}
                 </div>
               </Link>
             )
@@ -58,27 +61,46 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="p-4 border-t border-border mt-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <div className="w-8 h-8 bg-secondary border border-border flex items-center justify-center flex-shrink-0">
-                <span className="text-xs uppercase font-bold text-muted-foreground">
-                  {user?.firstName?.[0] || user?.emailAddresses[0]?.emailAddress?.[0] || "?"}
-                </span>
+          {isSignedIn ? (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <div className="w-8 h-8 bg-secondary border border-border flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs uppercase font-bold text-muted-foreground">
+                      {user?.firstName?.[0] || user?.emailAddresses[0]?.emailAddress?.[0] || "?"}
+                    </span>
+                  </div>
+                  <div className="text-xs truncate text-muted-foreground">
+                    <div className="font-bold text-foreground truncate">{user?.firstName || "Analyst"}</div>
+                    <div className="truncate">{user?.emailAddresses[0]?.emailAddress}</div>
+                  </div>
+                </div>
               </div>
-              <div className="text-xs truncate text-muted-foreground">
-                <div className="font-bold text-foreground truncate">{user?.firstName || "Analyst"}</div>
-                <div className="truncate">{user?.emailAddresses[0]?.emailAddress}</div>
-              </div>
-            </div>
-          </div>
-          <Button 
-            variant="outline" 
-            className="w-full justify-start text-muted-foreground text-xs h-8"
-            onClick={() => signOut({ redirectUrl: "/" })}
-          >
-            <LogOut size={14} className="mr-2" />
-            END SESSION
-          </Button>
+              <Button 
+                variant="outline" 
+                className="w-full justify-start text-muted-foreground text-xs h-8"
+                onClick={() => signOut({ redirectUrl: "/" })}
+              >
+                <LogOut size={14} className="mr-2" />
+                END SESSION
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                Sign in to unlock AI-powered tools and saved history.
+              </p>
+              <Link href="/sign-in">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-muted-foreground text-xs h-8"
+                >
+                  <LogIn size={14} className="mr-2" />
+                  SIGN IN
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
       </div>
 

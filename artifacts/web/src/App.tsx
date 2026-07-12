@@ -183,9 +183,11 @@ function ClerkProviderWithRoutes() {
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
             
+            {/* Public tool: no sign-in required, extraction is 100% client-side */}
+            <Route path="/ioc-extractor" component={() => <AppLayout><IocExtractorPage /></AppLayout>} />
+
             {/* Protected App Routes */}
             <Route path="/dashboard" component={() => <ProtectedRoute component={DashboardPage} />} />
-            <Route path="/ioc-extractor" component={() => <ProtectedRoute component={IocExtractorPage} />} />
             <Route path="/log-analyzer" component={() => <ProtectedRoute component={LogAnalyzerPage} />} />
             <Route path="/incident-report" component={() => <ProtectedRoute component={IncidentReportPage} />} />
             <Route path="/decoder" component={() => <ProtectedRoute component={DecoderPage} />} />
